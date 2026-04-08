@@ -2,19 +2,19 @@
 
 > An adversarial audit of your political worldview.
 
-You paste your political positions in plain language. **gutcheck** runs three parallel agents over your views — each one searches the live web for primary sources — and prints back:
+You start with a rough political thought in plain language. **gutcheck** first tightens that thought into concrete, fact-checkable claims, then runs three parallel agents over the result — each one searches the live web for primary sources — and prints back:
 
 1. **Where the data contradicts you.** Specific claims you made that the numbers don't support, with citations.
 2. **Where the data backs you up.** Specific claims you made that the numbers do support, with citations.
 3. **Where you unknowingly agree with the other side.** Specific positions of yours that people from the opposing political tribe also hold, for the same data-backed reasons. Insight, not gotcha.
 
-The whole thing runs in your terminal. No accounts, no servers, no tracking. It uses your own Claude Code subscription via the bundled `claude` CLI.
+The whole thing runs in your terminal. No app server, no hosted state. It uses your local `codex` CLI session for both the argument-coaching pass and the audit.
 
 ---
 
 ## Why this exists
 
-Most political "fact-checkers" position the AI as an external authority telling you what's true. That's psychologically unpalatable and usually wrong about something. **gutcheck** does the opposite: it takes *your stated beliefs* as the starting point, then runs adversarial searches to find where they break against themselves. It's not "you're wrong" — it's "two things you said can't both be true, here's the data, you decide."
+Most political "fact-checkers" position the AI as an external authority telling you what's true. That's psychologically unpalatable and usually wrong about something. **gutcheck** does the opposite: it starts with *your stated belief*, helps you clarify what you actually mean, then runs adversarial searches to find where that sharpened argument breaks against the data. It's not "you're wrong" — it's "here's the version of your argument we're actually auditing, and here's where the evidence holds or fails."
 
 The premise: **baseline facts exist and matter for a functioning society.** This tool doesn't hedge, doesn't both-sides every issue, and is willing to say "the data clearly contradicts this" when the data clearly contradicts it. It also won't pretend to support a claim that isn't actually well-supported just to flatter you.
 
@@ -24,11 +24,11 @@ If you're looking for a tool that confirms what you already believe, this isn't 
 
 ## What you need
 
-1. **A Claude Pro or Max subscription** (the `$20/mo` and up plans). This is what the tool uses for inference.
+1. **An installed and authenticated `codex` CLI.**
 2. **Python 3.10 or newer.**
 3. **[uv](https://github.com/astral-sh/uv)** — `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
-That's it. The Claude Code CLI is bundled with the Python SDK, so you don't need to install it separately. You just need to be authenticated.
+That is the only runtime dependency outside Python. `gutcheck` shells out to `codex exec`, so your existing Codex login is what it uses for inference and web search.
 
 ---
 
@@ -40,39 +40,66 @@ cd gutcheck
 uv sync
 ```
 
-First time only — authenticate the bundled `claude` CLI with your subscription:
+First time only — make sure Codex is authenticated:
 
 ```bash
-uv run claude
-# Follow the prompts to log in. Quit once you're authenticated.
+codex login
 ```
 
-Then run the audit. Three options:
+Then run the audit. The default run now auto-saves a shareable PDF in `gutcheck-reports/` using a filename derived from the argument being audited.
 
-**Option 1 — open your editor (recommended for first run):**
+**Option 1 — conversation mode (recommended for first run):**
 ```bash
 uv run gutcheck
 ```
-This opens `$EDITOR` with a template. Type your positions, save, quit. The audit kicks off.
+This starts the interactive argument-coaching flow, runs the audit, and auto-saves a PDF such as `gutcheck-reports/canada-homelessness-immigration.pdf`. If that filename already exists, gutcheck will save `...-2.pdf`, `...-3.pdf`, and so on.
 
-**Option 2 — pass a file:**
+**Option 2 — open your editor directly:**
+```bash
+uv run gutcheck --editor
+```
+This skips the coaching questions and opens `$EDITOR` with a manual template.
+
+**Option 3 — pass a file:**
 ```bash
 uv run gutcheck my_positions.md
 ```
 
-**Option 3 — pipe from stdin:**
+**Option 4 — pipe from stdin:**
 ```bash
 echo "I think Biden was soft on the border. The economy is fine." | uv run gutcheck
 ```
 
+**Option 5 — also save a Markdown report:**
+```bash
+uv run gutcheck --output report.md
+```
+This keeps the normal terminal output, still auto-saves the PDF, and also writes Markdown to `report.md` without overwriting an existing file.
+
+**Option 6 — choose your own PDF filename:**
+```bash
+uv run gutcheck --pdf report.pdf
+```
+This writes the PDF to your chosen path, but still avoids overwriting by adding `-2`, `-3`, and so on if needed. You can also save both formats in one run with `--output report.md --pdf report.pdf`.
+
 ---
+
+## First-run experience
+
+The default flow is designed for people who do **not** already have a polished claim ready. You can start rough:
+
+**You:** `immigration is bad`
+
+**gutcheck:** "Do you mean because border encounters increased, because wages or housing got squeezed, because crime rose, or something else?"
+
+After you answer 2-3 questions like that, the tool shows you the tightened version it is about to audit. You can accept it, edit it, or abort.
 
 ## Writing good positions
 
-The tool is only as sharp as the input. Vague gives vague, specific gives specific.
+The audit is still only as sharp as the final framing. If you already know exactly what you mean, write it directly.
 
-**Bad:** "Immigration is bad."
-**Good:** "Illegal border crossings have surged under Biden and the administration is downplaying it."
+**Rough:** "Immigration is bad."
+**Tightened:** "Border encounters rose under Biden, major cities absorbed higher shelter costs, and the administration publicly downplayed the scale of the surge."
 
 **Bad:** "The economy is rigged."
 **Good:** "Wage growth for the bottom 50% has been outpaced by asset price inflation, so the recovery doesn't reach normal people."
@@ -111,14 +138,19 @@ Each section is independent. They run in parallel and print as they finish, so t
 
 - **It can be wrong.** The hunters cite primary sources, but LLMs can still misread, miscount, or pick a non-representative source. Treat this as a starting point for your own digging, not the final word. Click the citations.
 - **It works best on factual claims.** It can audit "X happened" or "Y data says Z." It can't audit "X is morally wrong" or "Y feels like it's getting worse" — those aren't checkable against data.
-- **It costs your subscription tokens.** Each audit makes ~3 long Claude calls with web search. On a Pro/Max plan that's well within limits, but if you run it 50 times back-to-back you may hit your usage cap.
-- **No history.** Each run is fresh. Nothing is saved to disk. (This is intentional.)
+- **It uses Codex usage.** Each audit makes several non-interactive `codex exec` calls, and the three fact-checking passes all use live web search.
+- **Reports are saved to disk.** Every run auto-saves a PDF in `gutcheck-reports/`. Use `--output` if you also want Markdown, or `--pdf` if you want to control the PDF path.
 
 ---
 
 ## The architecture, briefly
 
-Three Python coroutines, three system prompts, three Claude Agent SDK queries running in parallel via `asyncio.as_completed`. Each one has the WebSearch and WebFetch tools enabled. Each one is told to be intellectually honest — to skip the section entirely if the data doesn't support a clean answer rather than fabricating one.
+There are now two stages:
+
+1. A short argument-coaching pass that asks clarification questions and synthesizes a tighter, fact-checkable framing.
+2. Three parallel `codex exec --search` calls running via `asyncio.as_completed`.
+
+Each hunter is told to be intellectually honest — to skip the section entirely if the data doesn't support a clean answer rather than fabricating one.
 
 Inspired by [brendanhogan/loophole](https://github.com/brendanhogan/loophole), which uses the same adversarial-self-knowledge pattern for moral codes instead of political worldviews.
 

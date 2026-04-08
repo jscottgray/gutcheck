@@ -38,3 +38,6 @@ MANIFEST
 
 # Editor temp files from gutcheck input flow
 gutcheck-*.md
+
+# Generated reports
+gutcheck-reports/
